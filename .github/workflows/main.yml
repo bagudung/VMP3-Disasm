@@ -15,7 +15,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── System dependencies (mengikuti Dockerfile resmi Triton) ─────────
+      # ── System dependencies ──────────────────────────────────────────────
       - name: Install system packages
         run: |
           sudo apt-get update -y
@@ -26,55 +26,69 @@ jobs:
             llvm-16-dev \
             libboost-all-dev \
             libgmp-dev \
-            libpython3-dev \
             libmpfr-dev \
+            libpython3-dev \
             ninja-build \
             pkg-config \
             python3-pip \
-            python3-venv \
             cmake \
             git \
             curl \
-            tar
+            tar \
+            unzip
 
-      # ── Python deps: cmake, z3, lief via pip ────────────────────────────
-      - name: Install Python dependencies
+      # ── Z3 dari source (agar libz3.so masuk /usr/local/lib) ─────────────
+      - name: Build and install Z3
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install cmake z3-solver lief setuptools
+          git clone https://github.com/Z3Prover/z3.git /tmp/z3 --depth=1 --branch z3-4.13.0
+          cd /tmp/z3
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DZ3_BUILD_PYTHON_BINDINGS=OFF \
+            -DZ3_BUILD_JAVA_BINDINGS=OFF \
+            -DZ3_BUILD_DOTNET_BINDINGS=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build build --parallel $(nproc)
+          sudo cmake --install build
+          sudo ldconfig
 
-      # ── Capstone 5 (dari source, sesuai Dockerfile resmi Triton) ────────
-      - name: Install Capstone 5
+      # ── Capstone 5 dari source ───────────────────────────────────────────
+      - name: Build and install Capstone 5
         run: |
           cd /tmp
           curl -s -o capstone-5.0.1.tar.gz -L https://github.com/aquynh/capstone/archive/5.0.1.tar.gz
           tar xf capstone-5.0.1.tar.gz
           cd capstone-5.0.1
-          cmake -B build -DBUILD_SHARED_LIBS=ON -GNinja
-          cd build
-          sudo ninja install
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DCAPSTONE_BUILD_TESTS=OFF \
+            -DCAPSTONE_BUILD_CSTOOL=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
+            -GNinja
+          sudo ninja -C build install
           sudo ldconfig
 
-      # ── Triton (mengikuti cara resmi dari Dockerfile) ───────────────────
-      - name: Install Triton
+      # ── Triton ──────────────────────────────────────────────────────────
+      - name: Build and install Triton
         run: |
           git clone https://github.com/JonathanSalwan/Triton.git /tmp/Triton --depth=1 --branch master
-          Z3_PATH=$(python3 -c "import site; print(f'{site.getsitepackages()[0]}/z3')")
-          mkdir /tmp/triton-build
           cmake -S /tmp/Triton -B /tmp/triton-build -GNinja \
             -DCMAKE_BUILD_TYPE=Release \
             -DPYTHON_BINDINGS=OFF \
             -DLLVM_INTERFACE=ON \
             -DCMAKE_PREFIX_PATH=$(llvm-config-16 --prefix) \
             -DZ3_INTERFACE=ON \
-            -DZ3_INCLUDE_DIRS=$Z3_PATH/include/ \
-            -DZ3_LIBRARIES=$Z3_PATH/lib/libz3.so \
+            -DZ3_INCLUDE_DIRS=/usr/local/include \
+            -DZ3_LIBRARIES=/usr/local/lib/libz3.so \
+            -DCAPSTONE_INCLUDE_DIRS=/usr/local/include \
+            -DCAPSTONE_LIBRARIES=/usr/local/lib/libcapstone.so \
             -DCMAKE_INSTALL_PREFIX=/usr/local
-          ninja -C /tmp/triton-build -j$(nproc) install
+          sudo ninja -C /tmp/triton-build -j$(nproc) install
           sudo ldconfig
 
       # ── LIEF C++ library dari source ─────────────────────────────────────
-      - name: Install LIEF
+      - name: Build and install LIEF
         run: |
           git clone https://github.com/lief-project/LIEF.git /tmp/LIEF --depth=1 --branch 0.14.1
           cmake -S /tmp/LIEF -B /tmp/LIEF/build \
