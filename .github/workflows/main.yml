@@ -38,8 +38,6 @@ jobs:
       # ── LIEF ────────────────────────────────────────────────────────────
       - name: Install LIEF
         run: |
-          pip3 install lief
-          # Install LIEF C++ library from source
           git clone https://github.com/lief-project/LIEF.git /tmp/LIEF --depth=1 --branch 0.14.1
           cd /tmp/LIEF
           cmake -B build \
@@ -50,6 +48,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=/usr/local
           cmake --build build --parallel $(nproc)
           sudo cmake --install build
+          sudo ldconfig
 
       # ── Capstone 5 (apt only ships v4, Triton master needs v5) ──────────
       - name: Install Capstone 5
@@ -65,7 +64,7 @@ jobs:
           sudo cmake --install build
           sudo ldconfig
 
-      # ── Triton ──────────────────────────────────────────────────────────
+      # ── Triton (LLVM_INTERFACE=OFF untuk avoid tritonToLLVM.cpp error) ──
       - name: Install Triton
         run: |
           git clone https://github.com/JonathanSalwan/Triton.git /tmp/Triton --depth=1 --branch master
@@ -77,12 +76,11 @@ jobs:
             -DCAPSTONE_INTERFACE=ON \
             -DCAPSTONE_INCLUDE_DIRS=/usr/local/include \
             -DCAPSTONE_LIBRARIES=/usr/local/lib/libcapstone.so \
-            -DLLVM_INTERFACE=ON \
-            -DLLVM_LIBRARIES=/usr/lib/llvm-13/lib \
-            -DLLVM_INCLUDE_DIRS=/usr/lib/llvm-13/include \
+            -DLLVM_INTERFACE=OFF \
             -DCMAKE_INSTALL_PREFIX=/usr/local
           cmake --build build --parallel $(nproc)
           sudo cmake --install build
+          sudo ldconfig
 
       # ── Build VMP3-Disasm ────────────────────────────────────────────────
       - name: Configure CMake
