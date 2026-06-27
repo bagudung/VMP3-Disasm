@@ -55,7 +55,7 @@ jobs:
       # ── Triton ──────────────────────────────────────────────────────────
       - name: Install Triton
         run: |
-          git clone https://github.com/JonathanSalwan/Triton.git /tmp/Triton --depth=1 --branch v1.0
+          git clone https://github.com/JonathanSalwan/Triton.git /tmp/Triton --depth=1 --branch master
           cd /tmp/Triton
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
