@@ -1,0 +1,89 @@
+name: Build VMP3-Disasm
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── System dependencies ──────────────────────────────────────────────
+      - name: Install system packages
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            clang-13 \
+            llvm-13 \
+            llvm-13-dev \
+            libllvm13 \
+            cmake \
+            ninja-build \
+            python3 \
+            python3-pip \
+            git \
+            wget \
+            curl \
+            pkg-config \
+            libboost-all-dev \
+            libz3-dev \
+            libcapstone-dev
+
+      # ── LIEF ────────────────────────────────────────────────────────────
+      - name: Install LIEF
+        run: |
+          pip3 install lief
+          # Install LIEF C++ library from source
+          git clone https://github.com/lief-project/LIEF.git /tmp/LIEF --depth=1 --branch 0.14.1
+          cd /tmp/LIEF
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLIEF_PYTHON_API=OFF \
+            -DLIEF_TESTS=OFF \
+            -DLIEF_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build build --parallel $(nproc)
+          sudo cmake --install build
+
+      # ── Triton ──────────────────────────────────────────────────────────
+      - name: Install Triton
+        run: |
+          git clone https://github.com/JonathanSalwan/Triton.git /tmp/Triton --depth=1 --branch v1.0
+          cd /tmp/Triton
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPYTHON_BINDINGS=OFF \
+            -DZ3_INTERFACE=ON \
+            -DCAPSTONE_INTERFACE=ON \
+            -DLLVM_INTERFACE=ON \
+            -DLLVM_LIBRARIES=/usr/lib/llvm-13/lib \
+            -DLLVM_INCLUDE_DIRS=/usr/lib/llvm-13/include \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build build --parallel $(nproc)
+          sudo cmake --install build
+
+      # ── Build VMP3-Disasm ────────────────────────────────────────────────
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang-13 \
+            -DCMAKE_CXX_COMPILER=clang++-13
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      # ── Upload artifact ──────────────────────────────────────────────────
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: vmp-disasm-linux-x64
+          path: build/vmp-disasm
+          if-no-files-found: error
