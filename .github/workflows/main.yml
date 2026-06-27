@@ -9,77 +9,82 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── System dependencies ──────────────────────────────────────────────
+      # ── System dependencies (mengikuti Dockerfile resmi Triton) ─────────
       - name: Install system packages
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y \
-            clang-13 \
-            llvm-13 \
-            llvm-13-dev \
-            libllvm13 \
-            cmake \
-            ninja-build \
-            python3 \
-            python3-pip \
-            git \
-            wget \
-            curl \
-            pkg-config \
+          sudo apt-get install -y --no-install-suggests --no-install-recommends \
+            build-essential \
+            clang \
+            llvm-16 \
+            llvm-16-dev \
             libboost-all-dev \
-            libz3-dev
+            libgmp-dev \
+            libpython3-dev \
+            libmpfr-dev \
+            ninja-build \
+            pkg-config \
+            python3-pip \
+            python3-venv \
+            cmake \
+            git \
+            curl \
+            tar
 
-      # ── LIEF ────────────────────────────────────────────────────────────
+      # ── Python deps: cmake, z3, lief via pip ────────────────────────────
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install cmake z3-solver lief setuptools
+
+      # ── Capstone 5 (dari source, sesuai Dockerfile resmi Triton) ────────
+      - name: Install Capstone 5
+        run: |
+          cd /tmp
+          curl -s -o capstone-5.0.1.tar.gz -L https://github.com/aquynh/capstone/archive/5.0.1.tar.gz
+          tar xf capstone-5.0.1.tar.gz
+          cd capstone-5.0.1
+          cmake -B build -DBUILD_SHARED_LIBS=ON -GNinja
+          cd build
+          sudo ninja install
+          sudo ldconfig
+
+      # ── Triton (mengikuti cara resmi dari Dockerfile) ───────────────────
+      - name: Install Triton
+        run: |
+          git clone https://github.com/JonathanSalwan/Triton.git /tmp/Triton --depth=1 --branch master
+          Z3_PATH=$(python3 -c "import site; print(f'{site.getsitepackages()[0]}/z3')")
+          mkdir /tmp/triton-build
+          cmake -S /tmp/Triton -B /tmp/triton-build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPYTHON_BINDINGS=OFF \
+            -DLLVM_INTERFACE=ON \
+            -DCMAKE_PREFIX_PATH=$(llvm-config-16 --prefix) \
+            -DZ3_INTERFACE=ON \
+            -DZ3_INCLUDE_DIRS=$Z3_PATH/include/ \
+            -DZ3_LIBRARIES=$Z3_PATH/lib/libz3.so \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          ninja -C /tmp/triton-build -j$(nproc) install
+          sudo ldconfig
+
+      # ── LIEF C++ library dari source ─────────────────────────────────────
       - name: Install LIEF
         run: |
           git clone https://github.com/lief-project/LIEF.git /tmp/LIEF --depth=1 --branch 0.14.1
-          cd /tmp/LIEF
-          cmake -B build \
+          cmake -S /tmp/LIEF -B /tmp/LIEF/build \
             -DCMAKE_BUILD_TYPE=Release \
             -DLIEF_PYTHON_API=OFF \
             -DLIEF_TESTS=OFF \
             -DLIEF_EXAMPLES=OFF \
             -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build build --parallel $(nproc)
-          sudo cmake --install build
-          sudo ldconfig
-
-      # ── Capstone 5 (apt only ships v4, Triton master needs v5) ──────────
-      - name: Install Capstone 5
-        run: |
-          git clone https://github.com/capstone-engine/capstone.git /tmp/capstone --depth=1 --branch 5.0.3
-          cd /tmp/capstone
-          cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCAPSTONE_BUILD_TESTS=OFF \
-            -DCAPSTONE_BUILD_CSTOOL=OFF \
-            -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build build --parallel $(nproc)
-          sudo cmake --install build
-          sudo ldconfig
-
-      # ── Triton (LLVM_INTERFACE=OFF untuk avoid tritonToLLVM.cpp error) ──
-      - name: Install Triton
-        run: |
-          git clone https://github.com/JonathanSalwan/Triton.git /tmp/Triton --depth=1 --branch master
-          cd /tmp/Triton
-          cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DPYTHON_BINDINGS=OFF \
-            -DZ3_INTERFACE=ON \
-            -DCAPSTONE_INTERFACE=ON \
-            -DCAPSTONE_INCLUDE_DIRS=/usr/local/include \
-            -DCAPSTONE_LIBRARIES=/usr/local/lib/libcapstone.so \
-            -DLLVM_INTERFACE=OFF \
-            -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build build --parallel $(nproc)
-          sudo cmake --install build
+          cmake --build /tmp/LIEF/build --parallel $(nproc)
+          sudo cmake --install /tmp/LIEF/build
           sudo ldconfig
 
       # ── Build VMP3-Disasm ────────────────────────────────────────────────
@@ -87,8 +92,8 @@ jobs:
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER=clang-13 \
-            -DCMAKE_CXX_COMPILER=clang++-13
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++
 
       - name: Build
         run: cmake --build build --parallel $(nproc)
