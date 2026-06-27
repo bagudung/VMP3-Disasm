@@ -37,19 +37,18 @@ jobs:
             tar \
             unzip
 
-      # ── Z3 dari source (agar libz3.so masuk /usr/local/lib) ─────────────
+      # ── Z3 dari source ───────────────────────────────────────────────────
       - name: Build and install Z3
         run: |
           git clone https://github.com/Z3Prover/z3.git /tmp/z3 --depth=1 --branch z3-4.13.0
-          cd /tmp/z3
-          cmake -B build \
+          cmake -S /tmp/z3 -B /tmp/z3/build \
             -DCMAKE_BUILD_TYPE=Release \
             -DZ3_BUILD_PYTHON_BINDINGS=OFF \
             -DZ3_BUILD_JAVA_BINDINGS=OFF \
             -DZ3_BUILD_DOTNET_BINDINGS=OFF \
             -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build build --parallel $(nproc)
-          sudo cmake --install build
+          cmake --build /tmp/z3/build --parallel $(nproc)
+          sudo cmake --install /tmp/z3/build
           sudo ldconfig
 
       # ── Capstone 5 dari source ───────────────────────────────────────────
@@ -87,7 +86,7 @@ jobs:
           sudo ninja -C /tmp/triton-build -j$(nproc) install
           sudo ldconfig
 
-      # ── LIEF C++ library dari source ─────────────────────────────────────
+      # ── LIEF dari source ─────────────────────────────────────────────────
       - name: Build and install LIEF
         run: |
           git clone https://github.com/lief-project/LIEF.git /tmp/LIEF --depth=1 --branch 0.14.1
@@ -100,6 +99,17 @@ jobs:
           cmake --build /tmp/LIEF/build --parallel $(nproc)
           sudo cmake --install /tmp/LIEF/build
           sudo ldconfig
+
+      # ── Patch CMakeLists.txt: ganti path LLVM-13 → LLVM-16 ──────────────
+      - name: Patch CMakeLists.txt for LLVM 16
+        run: |
+          LLVM16_INC=$(llvm-config-16 --includedir)
+          LLVM16_LIB=$(llvm-config-16 --libdir)
+          echo "LLVM include: $LLVM16_INC"
+          echo "LLVM lib:     $LLVM16_LIB"
+          sed -i "s|/usr/lib/llvm-13/include|$LLVM16_INC|g" CMakeLists.txt
+          sed -i "s|/usr/lib/llvm-13/lib|$LLVM16_LIB|g" CMakeLists.txt
+          cat CMakeLists.txt
 
       # ── Build VMP3-Disasm ────────────────────────────────────────────────
       - name: Configure CMake
