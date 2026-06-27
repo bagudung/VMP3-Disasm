@@ -33,8 +33,7 @@ jobs:
             curl \
             pkg-config \
             libboost-all-dev \
-            libz3-dev \
-            libcapstone-dev
+            libz3-dev
 
       # ── LIEF ────────────────────────────────────────────────────────────
       - name: Install LIEF
@@ -52,6 +51,20 @@ jobs:
           cmake --build build --parallel $(nproc)
           sudo cmake --install build
 
+      # ── Capstone 5 (apt only ships v4, Triton master needs v5) ──────────
+      - name: Install Capstone 5
+        run: |
+          git clone https://github.com/capstone-engine/capstone.git /tmp/capstone --depth=1 --branch 5.0.3
+          cd /tmp/capstone
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCAPSTONE_BUILD_TESTS=OFF \
+            -DCAPSTONE_BUILD_CSTOOL=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build build --parallel $(nproc)
+          sudo cmake --install build
+          sudo ldconfig
+
       # ── Triton ──────────────────────────────────────────────────────────
       - name: Install Triton
         run: |
@@ -62,6 +75,8 @@ jobs:
             -DPYTHON_BINDINGS=OFF \
             -DZ3_INTERFACE=ON \
             -DCAPSTONE_INTERFACE=ON \
+            -DCAPSTONE_INCLUDE_DIRS=/usr/local/include \
+            -DCAPSTONE_LIBRARIES=/usr/local/lib/libcapstone.so \
             -DLLVM_INTERFACE=ON \
             -DLLVM_LIBRARIES=/usr/lib/llvm-13/lib \
             -DLLVM_INCLUDE_DIRS=/usr/lib/llvm-13/include \
